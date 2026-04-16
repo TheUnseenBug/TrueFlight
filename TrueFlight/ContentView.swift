@@ -22,7 +22,12 @@ struct Throw: Codable, Identifiable {
     let noseAngle: Double   // degrees
     
     var wobble: Double {
-        abs(maxSpin - (maxAccel * 10)) // Estimate wobble from spin variance
+        // Wobble measures flight instability
+        // High spin with low acceleration = unstable/wobbly flight
+        // Low spin with high acceleration = stable flight
+        // Formula: deviation from ideal stable ratio (spin:accel = 3.5:1)
+        let stableRatio = maxAccel * 3.5
+        return abs(maxSpin - stableRatio)
     }
     
     var dateFormatted: String {
@@ -66,7 +71,7 @@ class WatchConnectivityManager: NSObject, WCSessionDelegate {
                     throwType: throwType,
                     speed: rpmSpeed,
                     hyzer: self.calculateHyzer(accel: maxAccel),
-                    noseAngle: self.calculateNoseAngle(spin: maxSpin)
+                    noseAngle: self.calculateNoseAngle(spin: maxSpin, accel: maxAccel)
                 )
                 
                 self.throws.insert(newThrow, at: 0)
@@ -111,11 +116,26 @@ class WatchConnectivityManager: NSObject, WCSessionDelegate {
     }
     
     private func calculateHyzer(accel: Double) -> Double {
-        min(45, accel * 8) // Estimate based on acceleration
+        // Hyzer angle (pitch): how nose-up the disc is at release
+        // Higher acceleration = more force = higher hyzer angle
+        // Formula: scales acceleration to realistic hyzer range (-30 to 45 degrees)
+        // Base: 0° at 1.5 Gs, increases 12° per additional G
+        let baseAngle = (accel - 1.5) * 12.0
+        return max(-30, min(45, baseAngle))
     }
     
-    private func calculateNoseAngle(spin: Double) -> Double {
-        max(-30, min(30, spin * 2)) // Estimate based on spin
+    private func calculateNoseAngle(spin: Double, accel: Double) -> Double {
+        // Nose angle (forward/backward tilt): affects distance and drop rate
+        // High spin with moderate accel = nose up (stable, far flight)
+        // Low spin or high accel = nose down (less distance, faster drop)
+        // Formula: spin-to-accel ratio determines nose angle
+        // Ideal ratio ~2.5:1, deviation scales angle
+        if accel > 0 {
+            let ratio = spin / (accel + 0.5)
+            let noseAngle = (ratio - 2.5) * 8.0  // Scale deviation to degrees
+            return max(-30, min(30, noseAngle))
+        }
+        return 0
     }
     
     private func saveThrowsToStorage() {

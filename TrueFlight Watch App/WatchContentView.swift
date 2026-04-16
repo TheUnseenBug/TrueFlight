@@ -29,6 +29,10 @@ struct WatchContentView: View {
     private let accelThreshold = 2.5
     private let gyroThreshold = 8.0
     private let flightEndGyro = 1.0
+    
+    // Watch weight compensation (~40g watch on disc)
+    // Reduces peak values by 5% to normalize for watch's added drag/weight
+    private let watchWeightCompensation = 0.95
 
     // User (replace with auth later)
     private let userId = "user_123"
@@ -100,8 +104,8 @@ struct WatchContentView: View {
         let throwData = ThrowSummary(
             userId: userId,
             timestamp: timestamp,
-            maxSpin: maxSpin,
-            maxAccel: maxAccel
+            maxSpin: maxSpin * watchWeightCompensation,
+            maxAccel: maxAccel * watchWeightCompensation
         )
 
         sendThrowToPhone(throwData)
