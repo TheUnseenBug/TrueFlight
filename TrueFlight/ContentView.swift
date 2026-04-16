@@ -8,10 +8,11 @@
 import SwiftUI
 import WatchConnectivity
 import AVFoundation
+import Combine
 
 // MARK: - Throw Model
 struct Throw: Codable, Identifiable {
-    let id = UUID()
+    var id = UUID()
     let userId: String
     let timestamp: TimeInterval
     let maxSpin: Double      // rad/s
@@ -40,9 +41,9 @@ struct Throw: Codable, Identifiable {
 }
 
 // MARK: - Watch Connectivity Manager
-class WatchConnectivityManager: NSObject, WCSessionDelegate {
+class WatchConnectivityManager: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = WatchConnectivityManager()
-    @Published var throws: [Throw] = []
+    @Published var `throws`: [Throw] = []
     private let speechSynthesizer = AVSpeechSynthesizer()
     
     override init() {
@@ -88,7 +89,7 @@ class WatchConnectivityManager: NSObject, WCSessionDelegate {
     private func speakThrowMetrics(_ throwRecord: Throw) {
         // Configure audio session for headphones
         let audioSession = AVAudioSession.sharedInstance()
-        try? audioSession.setCategory(.default, mode: .default, options: [.duckOthers])
+        try? audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
         try? audioSession.setActive(true)
         
         // Format the metrics text
@@ -139,7 +140,7 @@ class WatchConnectivityManager: NSObject, WCSessionDelegate {
     }
     
     private func saveThrowsToStorage() {
-        if let encoded = try? JSONEncoder().encode(throws) {
+        if let encoded = try? JSONEncoder().encode(self.throws) {
             UserDefaults.standard.set(encoded, forKey: "storedThrows")
         }
     }
@@ -152,136 +153,395 @@ class WatchConnectivityManager: NSObject, WCSessionDelegate {
     }
 }
 
-// MARK: - Stat Card View
-struct StatCard: View {
-    let title: String
-    let value: Double
-    let unit: String
-    
-    var body: some View {
-        VStack {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(String(format: "%.1f", value))
-                .font(.title2)
-                .fontWeight(.bold)
-            Text(unit)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-    }
-}
-
 // MARK: - Content View
 struct ContentView: View {
     @StateObject private var watchManager = WatchConnectivityManager.shared
+    @State private var selectedTab = 0
     
     var latestThrow: Throw? {
         watchManager.throws.first
     }
     
     var body: some View {
+        TabView(selection: $selectedTab) {
+            // MARK: - Dashboard Tab
+            DashboardView(latestThrow: latestThrow, throwsList: watchManager.throws)
+                .tag(0)
+                .tabItem {
+                    Label("Dashboard", systemImage: "chart.bar")
+                }
+            
+            // MARK: - History Tab
+            HistoryView(throwsList: watchManager.throws)
+                .tag(1)
+                .tabItem {
+                    Label("History", systemImage: "list.bullet")
+                }
+            
+            // MARK: - Stats Tab
+            StatsView(throwsList: watchManager.throws)
+                .tag(2)
+                .tabItem {
+                    Label("Stats", systemImage: "chart.line.uptrend.xyaxis")
+                }
+        }
+    }
+}
+
+// MARK: - Dashboard View
+struct DashboardView: View {
+    let latestThrow: Throw?
+    let throwsList: [Throw]
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("TrueFlight")
+                            .font(.system(size: 32, weight: .bold))
+                        Text(throwsList.isEmpty ? "No throws yet" : "\(throwsList.count) throws recorded")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    
+                    // Latest Throw Card (Large)
+                    if let latest = latestThrow {
+                        VStack(spacing: 16) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Latest Throw")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(latest.throwType)
+                                        .font(.title2)
+                                        .fontWeight(.bold)
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text("Just now")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(latest.dateFormatted)
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                            
+                            Divider()
+                            
+                            // Large Speed Display
+                            VStack(spacing: 8) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Speed")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        HStack(alignment: .center, spacing: 4) {
+                                            Text(String(format: "%.0f", latest.speed))
+                                                .font(.system(size: 44, weight: .bold))
+                                            Text("rpm")
+                                                .font(.title3)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Spin")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        HStack(alignment: .center, spacing: 4) {
+                                            Text(String(format: "%.1f", latest.maxSpin))
+                                                .font(.system(size: 32, weight: .bold))
+                                            Text("rad/s")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(16)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(16)
+                        .padding(.horizontal)
+                    }
+                    
+                    // Metrics Grid
+                    if let latest = latestThrow {
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                MetricCard(
+                                    title: "Wobble",
+                                    value: latest.wobble,
+                                    unit: "",
+                                    icon: "waveform.circle"
+                                )
+                                MetricCard(
+                                    title: "Hyzer",
+                                    value: latest.hyzer,
+                                    unit: "°",
+                                    icon: "arrow.up.right"
+                                )
+                                MetricCard(
+                                    title: "Nose",
+                                    value: latest.noseAngle,
+                                    unit: "°",
+                                    icon: "arrow.forward"
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                    
+                    // Quick Stats
+                    if !throwsList.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Stats")
+                                .font(.headline)
+                                .padding(.horizontal)
+                            
+                            HStack(spacing: 12) {
+                                QuickStatBox(
+                                    label: "Avg Speed",
+                                    value: String(format: "%.0f rpm", throwsList.prefix(10).map { $0.speed }.reduce(0, +) / Double(throwsList.prefix(10).count))
+                                )
+                                QuickStatBox(
+                                    label: "Max Spin",
+                                    value: String(format: "%.1f rad/s", throwsList.max(by: { $0.maxSpin < $1.maxSpin })?.maxSpin ?? 0)
+                                )
+                                QuickStatBox(
+                                    label: "Total",
+                                    value: "\(throwsList.count) throws"
+                                )
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                    
+                    Spacer(minLength: 40)
+                }
+                .padding(.vertical)
+            }
+            .navigationTitle("Dashboard")
+        }
+    }
+}
+
+// MARK: - History View
+struct HistoryView: View {
+    let throwsList: [Throw]
+    
+    var body: some View {
+        NavigationStack {
+            VStack {
+                if throwsList.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text("No Throws Yet")
+                            .font(.headline)
+                        Text("Start recording throws from your watch")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxHeight: .infinity, alignment: .center)
+                } else {
+                    List(throwsList) { throwRecord in
+                        HistoryRow(throwRecord: throwRecord)
+                    }
+                    .listStyle(.inset)
+                }
+            }
+            .navigationTitle("History")
+        }
+    }
+}
+
+// MARK: - Stats View
+struct StatsView: View {
+    let throwsList: [Throw]
+    
+    var avgSpeed: Double {
+        throwsList.isEmpty ? 0 : throwsList.map { $0.speed }.reduce(0, +) / Double(throwsList.count)
+    }
+    
+    var avgSpin: Double {
+        throwsList.isEmpty ? 0 : throwsList.map { $0.maxSpin }.reduce(0, +) / Double(throwsList.count)
+    }
+    
+    var avgWobble: Double {
+        throwsList.isEmpty ? 0 : throwsList.map { $0.wobble }.reduce(0, +) / Double(throwsList.count)
+    }
+    
+    var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    // Latest Throw
-                    if let latest = latestThrow {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Latest Throw")
-                                    .font(.headline)
-                                Spacer()
-                                Text(latest.throwType)
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(Color.blue)
-                                    .foregroundStyle(.white)
-                                    .cornerRadius(8)
-                            }
-                            Text(latest.dateFormatted)
+                    Text("Statistics")
+                        .font(.system(size: 32, weight: .bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                    
+                    if throwsList.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "chart.bar")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.secondary)
+                            Text("No Data Yet")
+                                .font(.headline)
+                            Text("Record throws to see statistics")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
-                    }
-                    
-                    // Stat Cards - Two Columns
-                    if let latest = latestThrow {
+                        .frame(maxHeight: .infinity, alignment: .center)
+                    } else {
                         VStack(spacing: 12) {
-                            // Row 1
-                            HStack(spacing: 12) {
-                                StatCard(title: "Speed", value: latest.speed, unit: "rpm")
-                                StatCard(title: "Spin", value: latest.maxSpin, unit: "rad/s")
-                            }
-                            
-                            // Row 2
-                            HStack(spacing: 12) {
-                                StatCard(title: "Wobble", value: latest.wobble, unit: "")
-                                StatCard(title: "Hyzer", value: latest.hyzer, unit: "°")
-                            }
-                            
-                            // Row 3
-                            HStack(spacing: 12) {
-                                StatCard(title: "Nose Angle", value: latest.noseAngle, unit: "°")
-                                Spacer()
-                            }
+                            StatBoxLarge(
+                                title: "Average Speed",
+                                value: String(format: "%.0f", avgSpeed),
+                                unit: "rpm"
+                            )
+                            StatBoxLarge(
+                                title: "Average Spin",
+                                value: String(format: "%.1f", avgSpin),
+                                unit: "rad/s"
+                            )
+                            StatBoxLarge(
+                                title: "Average Wobble",
+                                value: String(format: "%.1f", avgWobble),
+                                unit: ""
+                            )
                         }
+                        .padding(.horizontal)
                     }
                     
-                    // Throws History
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Throw History")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        if watchManager.throws.isEmpty {
-                            Text("No throws recorded yet")
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding()
-                        } else {
-                            List(watchManager.throws) { throwRecord in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(throwRecord.throwType)
-                                            .fontWeight(.semibold)
-                                        Spacer()
-                                        Text(throwRecord.dateFormatted)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    HStack(spacing: 16) {
-                                        Label(String(format: "%.1f rpm", throwRecord.speed), systemImage: "bolt.fill")
-                                            .font(.caption)
-                                        Label(String(format: "%.1f rad/s", throwRecord.maxSpin), systemImage: "tornado")
-                                            .font(.caption)
-                                        Label(String(format: "%.1f°", throwRecord.hyzer), systemImage: "arrow.up.left")
-                                            .font(.caption)
-                                    }
-                                    .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 4)
-                            }
-                            .listStyle(.plain)
-                        }
-                    }
+                    Spacer(minLength: 40)
                 }
-                .padding()
+                .padding(.vertical)
             }
-            .navigationTitle("TrueFlight")
+            .navigationTitle("Stats")
         }
+    }
+}
+
+// MARK: - Helper Components
+struct MetricCard: View {
+    let title: String
+    let value: Double
+    let unit: String
+    let icon: String
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.blue)
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            HStack(alignment: .center, spacing: 4) {
+                Text(String(format: "%.1f", value))
+                    .font(.system(size: 24, weight: .bold))
+                Text(unit)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(12)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+}
+
+struct QuickStatBox: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 18, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(12)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+    }
+}
+
+struct StatBoxLarge: View {
+    let title: String
+    let value: String
+    let unit: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: 8) {
+                Text(value)
+                    .font(.system(size: 48, weight: .bold))
+                Text(unit)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(16)
+        .background(Color(.systemGray6))
+        .cornerRadius(16)
+    }
+}
+
+struct HistoryRow: View {
+    let throwRecord: Throw
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(throwRecord.throwType)
+                        .fontWeight(.semibold)
+                    Text(throwRecord.dateFormatted)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.secondary)
+            }
+            
+            HStack(spacing: 16) {
+                Label(String(format: "%.0f rpm", throwRecord.speed), systemImage: "bolt.fill")
+                    .font(.caption)
+                Label(String(format: "%.1f rad/s", throwRecord.maxSpin), systemImage: "tornado")
+                    .font(.caption)
+                Spacer()
+            }
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 }
 
 #Preview {
     ContentView()
 }
+
