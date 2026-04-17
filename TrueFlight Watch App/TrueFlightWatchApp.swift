@@ -8,13 +8,19 @@
 //
 
 import SwiftUI
+import WatchConnectivity
 
 // Make sure ContentView-TrueFlightWatchApp.swift is included in this target.
 @main
 struct TrueFlight_Watch_AppApp: App {
+    init() {
+        // Ensure WCSession delegate is set on watch at launch
+        _ = WatchSessionManager.shared
+    }
     var body: some Scene {
         WindowGroup {
             WatchContentView() // From ContentView-TrueFlightWatchApp.swift
         }
     }
 }
+

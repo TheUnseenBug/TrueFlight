@@ -6,8 +6,10 @@ final class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = WatchSessionManager()
 
     @Published var isReachable: Bool = false
+    @Published var isArmedByPhone: Bool = false
 
     private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
+    var onArmCommand: ((Bool) -> Void)?
 
     private override init() {
         super.init()
@@ -43,8 +45,14 @@ final class WatchSessionManager: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
-    // Optional: receive messages from phone
+    // Receive arm/disarm commands from phone
     func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
-        // No-op. Add handling if needed.
+        if let command = message["command"] as? String {
+            let isArmed = command == "arm"
+            DispatchQueue.main.async { [weak self] in
+                self?.isArmedByPhone = isArmed
+                self?.onArmCommand?(isArmed)
+            }
+        }
     }
 }

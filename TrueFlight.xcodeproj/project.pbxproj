@@ -55,6 +55,7 @@
 				MotionManager.swift,
 				TrueFlightWatchApp.swift,
 				WatchContentView.swift,
+				WatchSessionManager.swift,
 			);
 			target = 321D65582F1E7D180090991F /* TrueFlight Watch App */;
 		};

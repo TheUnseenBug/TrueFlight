@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreMotion
 import WatchConnectivity
+import Combine
 
 // MARK: - Throw Summary (Saved to DB)
 struct ThrowSummary: Codable {
@@ -13,8 +14,8 @@ struct ThrowSummary: Codable {
 struct WatchContentView: View {
 
     // UI
-    @State private var statusText = "Idle"
-    @State private var isArmed = false
+    @State private var statusText = "Ready"
+    @StateObject private var sessionManager = WatchSessionManager.shared
 
     // Motion
     private let motionManager = CMMotionManager()
@@ -23,6 +24,9 @@ struct WatchContentView: View {
     @State private var releaseDetected = false
     @State private var maxSpin: Double = 0
     @State private var maxAccel: Double = 0
+    @State private var isRecording = false
+    @State private var gyroYAtRelease: Double = 0  // Track Y-axis rotation for spin direction
+    @State private var accelZAtRelease: Double = 0  // Track Z-axis accel for launch angle
 
     // Config
     private let sampleRate = 100.0
@@ -41,13 +45,21 @@ struct WatchContentView: View {
         VStack(spacing: 12) {
             Text(statusText)
                 .font(.headline)
-
-            Button(isArmed ? "Disarm" : "Arm Throw") {
-                isArmed ? stopMotion() : startMotion()
-                isArmed.toggle()
-            }
+            
+            Text(sessionManager.isArmedByPhone ? "Armed" : "Waiting for signal")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding()
+        .onAppear {
+            sessionManager.onArmCommand = { isArmed in
+                if isArmed {
+                    startMotion()
+                } else {
+                    stopMotion()
+                }
+            }
+        }
     }
 
     // MARK: - Motion Handling
@@ -82,6 +94,8 @@ struct WatchContentView: View {
 
                 releaseDetected = true
                 statusText = "Released 🚀"
+                gyroYAtRelease = gyro.y  // Capture Y-axis rotation (determines backhand vs forehand)
+                accelZAtRelease = accel.z  // Capture Z-axis accel for launch angle
             }
 
             // End throw when spin drops (net impact)
@@ -108,32 +122,46 @@ struct WatchContentView: View {
             maxAccel: maxAccel * watchWeightCompensation
         )
 
-        sendThrowToPhone(throwData)
+        // Determine spin direction: positive Y = backhand, negative Y = forehand
+        let spinDirection = gyroYAtRelease > 0 ? "Backhand" : "Forehand"
+        
+        // Calculate launch angle from Z-axis acceleration (0-45 degrees range)
+        let launchAngle = max(0, min(45, accelZAtRelease * 15.0))
+
+        // Convert from rad/s to RPM for downstream display
+        let maxSpinRpm = (throwData.maxSpin * 60.0) / (2.0 * .pi)
+
+        sendThrowToPhone(throwData, maxSpinRpm: maxSpinRpm, spinDirection: spinDirection, launchAngle: launchAngle)
 
         statusText = "Throw Saved ✅"
         resetState()
     }
 
     // MARK: - Networking
-    func sendThrowToPhone(_ throwData: ThrowSummary) {
+    func sendThrowToPhone(_ throwData: ThrowSummary, maxSpinRpm: Double, spinDirection: String, launchAngle: Double) {
         guard WCSession.isSupported() else {
             statusText = "Watch Connectivity Unavailable"
             return
         }
 
-        let session = WCSession.default
-        session.activate()
+        // Units: maxSpin (rad/s), maxSpinRpm (rev/min), maxAccel (G)
+        let payload: [String: Any] = [
+            "userId": throwData.userId,
+            "timestamp": Date().timeIntervalSince1970,
+            "maxSpin": throwData.maxSpin,
+            "maxSpinRpm": maxSpinRpm,
+            "maxAccel": throwData.maxAccel,
+            "spinDirection": spinDirection,
+            "launchAngle": launchAngle
+        ]
 
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(throwData)
-            if let dictionary = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                session.sendMessage(dictionary, replyHandler: nil) { error in
-                    print("Error sending throw data to phone:", error)
-                }
-            }
-        } catch {
-            print("Encoding error:", error)
+        WatchSessionManager.shared.send(message: payload)
+
+        // Optional UI feedback based on reachability
+        if WatchSessionManager.shared.isReachable {
+            statusText = "Sent to phone"
+        } else {
+            statusText = "Queued for delivery"
         }
     }
 
@@ -146,5 +174,7 @@ struct WatchContentView: View {
         releaseDetected = false
         maxSpin = 0
         maxAccel = 0
+        gyroYAtRelease = 0
+        accelZAtRelease = 0
     }
 }
