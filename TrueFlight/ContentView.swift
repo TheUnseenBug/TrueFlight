@@ -834,8 +834,6 @@ struct DashboardView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(.secondary)
                 }
                 
                 HStack(spacing: 16) {
