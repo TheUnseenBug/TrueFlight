@@ -361,7 +361,7 @@ struct DashboardView: View {
                                     }
                                     Spacer()
                                     VStack(alignment: .trailing, spacing: 4) {
-                                        Text("Just now")
+                                        Text("Time")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                         Text(latest.dateFormatted)
@@ -389,13 +389,13 @@ struct DashboardView: View {
                                         }
                                         Spacer()
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text("Wobble")
+                                            Text("Spin")
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                             HStack(alignment: .center, spacing: 4) {
-                                                Text(String(format: "%.1f", latest.wobble))
+                                                Text(String(format: "%.1f", latest.maxSpin * 9.5493))
                                                     .font(.system(size: 32, weight: .bold))
-                                                Text("rad/s")
+                                                Text("rpm")
                                                     .font(.caption)
                                                     .foregroundStyle(.secondary)
                                             }
@@ -420,7 +420,34 @@ struct DashboardView: View {
                                         }
                                     }
                                     Spacer()
+                                     VStack(alignment: .leading, spacing: 4) {
+                                        Text("Nose Angle")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        HStack(alignment: .center, spacing: 4) {
+                                            Text(String(format: "%.0f", latest.noseAngle))
+                                                .font(.system(size: 28, weight: .bold))
+                                            Text("°")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                     VStack(alignment: .leading, spacing: 4) {
+                                        Text("Hyzer")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        HStack(alignment: .center, spacing: 4) {
+                                            Text(String(format: "%.0f", latest.hyzer))
+                                                .font(.system(size: 28, weight: .bold))
+                                            Text("°")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    Spacer()
+
                                 }
+
                             }
                             .padding(16)
                             .background(Color(.systemGray6))
@@ -429,31 +456,37 @@ struct DashboardView: View {
                         }
                         
                         // Metrics Grid
-                        if let latest = latestThrow {
-                            VStack(spacing: 12) {
-                                HStack(spacing: 12) {
-                                    MetricCard(
-                                        title: "Spin",
-                                        value: latest.maxSpin * 9.5493,
-                                        unit: "rpm",
-                                        icon: "tornado"
-                                    )
-                                    MetricCard(
-                                        title: "Launch",
-                                        value: latest.launchAngle,
-                                        unit: "°",
-                                        icon: "arrow.up"
-                                    )
-                                    MetricCard(
-                                        title: "Hyzer",
-                                        value: latest.hyzer,
-                                        unit: "°",
-                                        icon: "arrow.up.right"
-                                    )
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
+                        // if let latest = latestThrow {
+                        //     VStack(spacing: 12) {
+                        //         HStack(spacing: 12) {
+                        //             MetricCard(
+                        //                 title: "Wobble",
+                        //                 value: latest.wobble,
+                        //                 unit: "DEG",
+                        //                 icon: "tornado"
+                        //             )
+                        //             MetricCard(
+                        //                 title: "Launch",
+                        //                 value: latest.launchAngle,
+                        //                 unit: "DEG",
+                        //                 icon: "arrow.up"
+                        //             )
+                        //             MetricCard(
+                        //                 title: "Nose",
+                        //                 value: latest.noseAngle,
+                        //                 unit: "DEG",
+                        //                 icon: "arrow.up"
+                        //             )
+                        //             MetricCard(
+                        //                 title: "Hyzer",
+                        //                 value: latest.hyzer,
+                        //                 unit: "DEG",
+                        //                 icon: "arrow.up.right"
+                        //             )
+                        //         }
+                        //     }
+                        //     .padding(.horizontal)
+                        // }
                         
                         // Quick Stats
                         if !throwsList.isEmpty {
@@ -809,6 +842,8 @@ struct DashboardView: View {
                     Label(String(format: "%.0f km/h", throwRecord.speed), systemImage: "bolt.fill")
                         .font(.caption)
                     Label(String(format: "%.0f rpm", throwRecord.maxSpin * 9.5493), systemImage: "tornado")
+                        .font(.caption)
+                        Label(String(format: "%.0f DEG", throwRecord.noseAngle), systemImage: " arrow.up.forward.circle")
                         .font(.caption)
                     Spacer()
                 }
