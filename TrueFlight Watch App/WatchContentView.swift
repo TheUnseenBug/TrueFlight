@@ -24,7 +24,6 @@ struct WatchContentView: View {
     @State private var releaseDetected = false
     @State private var maxSpin: Double = 0
     @State private var maxAccel: Double = 0
-    @State private var isRecording = false
     @State private var gyroYAtRelease: Double = 0  // Track Y-axis rotation for spin direction
     @State private var accelZAtRelease: Double = 0  // Track Z-axis accel for launch angle
     @State private var accelVectorAtRelease: (x: Double, y: Double, z: Double) = (0, 0, 0)
@@ -139,7 +138,7 @@ struct WatchContentView: View {
         // Calculate launch angle from full acceleration vector using physics
         // Launch angle is the pitch angle of the throw
         // Derived from the angle of the acceleration vector from horizontal
-        let accelMagnitude = magnitude(accelVectorAtRelease.x, accelVectorAtRelease.y, accelVectorAtRelease.z)
+        // let accelMagnitude = magnitude(accelVectorAtRelease.x, accelVectorAtRelease.y, accelVectorAtRelease.z)
         
         // Launch angle: angle between acceleration vector and horizontal plane
         // atan2(accelZ, sqrt(accelX^2 + accelY^2)) gives pitch angle
@@ -166,14 +165,14 @@ struct WatchContentView: View {
 
         // Units: maxSpin (rad/s), maxSpinRpm (rev/min), maxAccel (G), discMass (kg)
         let payload: [String: Any] = [
-            \"userId\": throwData.userId,
-            \"timestamp\": Date().timeIntervalSince1970,
-            \"maxSpin\": throwData.maxSpin,
-            \"maxSpinRpm\": maxSpinRpm,
-            \"maxAccel\": throwData.maxAccel,
-            \"spinDirection\": spinDirection,
-            \"launchAngle\": launchAngle,
-            \"discMass\": discMass  // Include disc mass for accurate server-side compensation
+            "userId": throwData.userId,
+            "timestamp": Date().timeIntervalSince1970,
+            "maxSpin": throwData.maxSpin,
+            "maxSpinRpm": maxSpinRpm,
+            "maxAccel": throwData.maxAccel,
+            "spinDirection": spinDirection,
+            "launchAngle": launchAngle,
+            "discMass": discMass  // Include disc mass for accurate server-side compensation
         ]
 
         WatchSessionManager.shared.send(message: payload)
